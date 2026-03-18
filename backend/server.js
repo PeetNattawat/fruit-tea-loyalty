@@ -123,7 +123,7 @@ app.get('/api/health', (req, res) => {
 // Generate QR Code
 app.get('/api/qr-code', async (req, res) => {
   try {
-    const baseUrl = process.env.FRONTEND_URL || `http://localhost:${PORT}`;
+    const baseUrl = process.env.FRONTEND_URL || 'https://magnificent-gecko-906e38.netlify.app';
     const loyaltyUrl = `${baseUrl}`;
     
     const qrCodeDataUrl = await QRCode.toDataURL(loyaltyUrl, {
