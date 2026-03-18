@@ -2,56 +2,25 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import rateLimit from 'express-rate-limit';
-import sqlite3 from 'sqlite3';
-import { open } from 'sqlite';
+import { createClient } from '@supabase/supabase-js';
 import TelegramBot from 'node-telegram-bot-api';
 import QRCode from 'qrcode';
-import path from 'path';
-import { fileURLToPath } from 'url';
 
 dotenv.config();
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-// Initialize SQLite database
-let db;
+// Initialize Supabase client
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_KEY;
+let supabase;
 
-async function initDb() {
-  db = await open({
-    filename: path.join(__dirname, 'loyalty.db'),
-    driver: sqlite3.Database
-  });
-
-  // Create tables
-  await db.exec(`
-    CREATE TABLE IF NOT EXISTS customers (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      phone_number TEXT UNIQUE NOT NULL,
-      points INTEGER NOT NULL DEFAULT 0 CHECK (points >= 0 AND points <= 10),
-      total_collected INTEGER NOT NULL DEFAULT 0 CHECK (total_collected >= 0),
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    );
-    
-    CREATE INDEX IF NOT EXISTS idx_customers_phone ON customers(phone_number);
-    
-    CREATE TABLE IF NOT EXISTS point_history (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      phone_number TEXT NOT NULL,
-      points_added INTEGER NOT NULL,
-      timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
-      redeemed BOOLEAN DEFAULT 0,
-      FOREIGN KEY (phone_number) REFERENCES customers(phone_number) ON DELETE CASCADE
-    );
-    
-    CREATE INDEX IF NOT EXISTS idx_history_phone ON point_history(phone_number);
-    CREATE INDEX IF NOT EXISTS idx_history_timestamp ON point_history(timestamp DESC);
-  `);
-  
-  console.log('✅ Database initialized');
+if (supabaseUrl && supabaseKey) {
+  supabase = createClient(supabaseUrl, supabaseKey);
+  console.log('✅ Supabase initialized');
+} else {
+  console.warn('⚠️ Supabase credentials not found');
 }
 const bot = process.env.TELEGRAM_BOT_TOKEN 
   ? new TelegramBot(process.env.TELEGRAM_BOT_TOKEN, { polling: false })
@@ -177,21 +146,31 @@ app.post('/api/collect-point', apiLimiter, antiAbuseMiddleware, async (req, res)
 
   try {
     // Check if customer exists
-    let customer = await db.get('SELECT * FROM customers WHERE phone_number = ?', phone_number);
+    const { data: existingCustomer, error: fetchError } = await supabase
+      .from('customers')
+      .select('*')
+      .eq('phone_number', phone_number)
+      .single();
 
-    if (!customer) {
+    if (fetchError && fetchError.code !== 'PGRST116') {
+      throw fetchError;
+    }
+
+    let customer;
+
+    if (!existingCustomer) {
       // Create new customer
-      const result = await db.run(
-        'INSERT INTO customers (phone_number, points, total_collected) VALUES (?, 1, 0)',
-        phone_number
-      );
-      customer = {
-        id: result.lastID,
-        phone_number,
-        points: 1,
-        total_collected: 0
-      };
+      const { data: newCustomer, error: insertError } = await supabase
+        .from('customers')
+        .insert({ phone_number, points: 1, total_collected: 0 })
+        .select()
+        .single();
+      
+      if (insertError) throw insertError;
+      customer = newCustomer;
     } else {
+      customer = existingCustomer;
+      
       // Check if already at max points
       if (customer.points >= 10) {
         return res.status(400).json({
@@ -206,15 +185,23 @@ app.post('/api/collect-point', apiLimiter, antiAbuseMiddleware, async (req, res)
       }
 
       // Update points
-      await db.run('UPDATE customers SET points = points + 1 WHERE id = ?', customer.id);
-      customer.points += 1;
+      const { data: updatedCustomer, error: updateError } = await supabase
+        .from('customers')
+        .update({ points: customer.points + 1 })
+        .eq('phone_number', phone_number)
+        .select()
+        .single();
+      
+      if (updateError) throw updateError;
+      customer = updatedCustomer;
     }
 
     // Record in point_history
-    await db.run(
-      'INSERT INTO point_history (phone_number, points_added, redeemed) VALUES (?, 1, 0)',
-      phone_number
-    );
+    const { error: historyError } = await supabase
+      .from('point_history')
+      .insert({ phone_number, points_added: 1, redeemed: false });
+    
+    if (historyError) throw historyError;
 
     // Update rate limit store
     rateLimitStore.set(phone_number, { timestamp: Date.now() });
@@ -242,11 +229,17 @@ app.get('/api/customer/:phone', async (req, res) => {
   const { phone } = req.params;
 
   try {
-    const customer = await db.get('SELECT * FROM customers WHERE phone_number = ?', phone);
+    const { data: customer, error } = await supabase
+      .from('customers')
+      .select('*')
+      .eq('phone_number', phone)
+      .single();
 
-    if (!customer) {
+    if (error && error.code === 'PGRST116') {
       return res.status(404).json({ error: 'Customer not found' });
     }
+
+    if (error) throw error;
 
     res.json({
       customer: {
@@ -268,34 +261,45 @@ app.post('/api/redeem', apiLimiter, async (req, res) => {
   const { phone_number } = req.body;
 
   try {
-    const customer = await db.get('SELECT * FROM customers WHERE phone_number = ?', phone_number);
+    const { data: customer, error: fetchError } = await supabase
+      .from('customers')
+      .select('*')
+      .eq('phone_number', phone_number)
+      .single();
 
-    if (!customer) {
+    if (fetchError && fetchError.code === 'PGRST116') {
       return res.status(404).json({ error: 'Customer not found' });
     }
+
+    if (fetchError) throw fetchError;
 
     if (customer.points < 10) {
       return res.status(400).json({ error: 'Not enough points to redeem' });
     }
 
     // Reset points and increment total_collected
-    await db.run(
-      'UPDATE customers SET points = 0, total_collected = total_collected + 1 WHERE id = ?',
-      customer.id
-    );
+    const { data: updatedCustomer, error: updateError } = await supabase
+      .from('customers')
+      .update({ points: 0, total_collected: customer.total_collected + 1 })
+      .eq('phone_number', phone_number)
+      .select()
+      .single();
+    
+    if (updateError) throw updateError;
 
     // Record redemption in history
-    await db.run(
-      'INSERT INTO point_history (phone_number, points_added, redeemed) VALUES (?, -10, 1)',
-      phone_number
-    );
+    const { error: historyError } = await supabase
+      .from('point_history')
+      .insert({ phone_number, points_added: -10, redeemed: true });
+    
+    if (historyError) throw historyError;
 
     res.json({
       message: '🎉 Free drink redeemed! Enjoy your YANGCHAM!',
       customer: {
-        phone_number: customer.phone_number,
-        points: 0,
-        total_collected: customer.total_collected + 1
+        phone_number: updatedCustomer.phone_number,
+        points: updatedCustomer.points,
+        total_collected: updatedCustomer.total_collected
       }
     });
   } catch (error) {
@@ -309,15 +313,19 @@ app.get('/api/history', async (req, res) => {
   const { phone, limit = 100 } = req.query;
 
   try {
-    let query = 'SELECT * FROM point_history ORDER BY timestamp DESC LIMIT ?';
-    let params = [parseInt(limit)];
+    let query = supabase
+      .from('point_history')
+      .select('*')
+      .order('timestamp', { ascending: false })
+      .limit(parseInt(limit));
 
     if (phone) {
-      query = 'SELECT * FROM point_history WHERE phone_number = ? ORDER BY timestamp DESC LIMIT ?';
-      params = [phone, parseInt(limit)];
+      query = query.eq('phone_number', phone);
     }
 
-    const history = await db.all(query, params);
+    const { data: history, error } = await query;
+
+    if (error) throw error;
 
     res.json({ history: history || [] });
   } catch (error) {
@@ -342,15 +350,18 @@ app.get('/api/admin/customers', async (req, res) => {
   const { search } = req.query;
 
   try {
-    let query = 'SELECT * FROM customers ORDER BY created_at DESC';
-    let params = [];
+    let query = supabase
+      .from('customers')
+      .select('*')
+      .order('created_at', { ascending: false });
 
     if (search) {
-      query = 'SELECT * FROM customers WHERE phone_number LIKE ? ORDER BY created_at DESC';
-      params = [`%${search}%`];
+      query = query.ilike('phone_number', `%${search}%`);
     }
 
-    const customers = await db.all(query, params);
+    const { data: customers, error } = await query;
+
+    if (error) throw error;
 
     res.json({ customers: customers || [] });
   } catch (error) {
@@ -365,28 +376,22 @@ app.patch('/api/admin/customers/:phone', async (req, res) => {
   const { points, total_collected } = req.body;
 
   try {
-    let updates = [];
-    let params = [];
+    const updates = {};
+    if (points !== undefined) updates.points = points;
+    if (total_collected !== undefined) updates.total_collected = total_collected;
     
-    if (points !== undefined) {
-      updates.push('points = ?');
-      params.push(points);
-    }
-    if (total_collected !== undefined) {
-      updates.push('total_collected = ?');
-      params.push(total_collected);
-    }
-    
-    if (updates.length === 0) {
+    if (Object.keys(updates).length === 0) {
       return res.status(400).json({ error: 'No updates provided' });
     }
     
-    params.push(phone);
-    
-    const query = `UPDATE customers SET ${updates.join(', ')} WHERE phone_number = ?`;
-    await db.run(query, params);
+    const { data: updated, error } = await supabase
+      .from('customers')
+      .update(updates)
+      .eq('phone_number', phone)
+      .select()
+      .single();
 
-    const updated = await db.get('SELECT * FROM customers WHERE phone_number = ?', phone);
+    if (error) throw error;
 
     res.json({ customer: updated });
   } catch (error) {
@@ -400,23 +405,32 @@ app.post('/api/admin/redeem', async (req, res) => {
   const { phone_number } = req.body;
 
   try {
-    const customer = await db.get('SELECT * FROM customers WHERE phone_number = ?', phone_number);
+    const { data: customer, error: fetchError } = await supabase
+      .from('customers')
+      .select('*')
+      .eq('phone_number', phone_number)
+      .single();
 
-    if (!customer) {
+    if (fetchError && fetchError.code === 'PGRST116') {
       return res.status(404).json({ error: 'Customer not found' });
     }
 
-    await db.run(
-      'UPDATE customers SET points = 0, total_collected = total_collected + 1 WHERE id = ?',
-      customer.id
-    );
+    if (fetchError) throw fetchError;
 
-    await db.run(
-      'INSERT INTO point_history (phone_number, points_added, redeemed) VALUES (?, -10, 1)',
-      phone_number
-    );
+    const { data: updated, error: updateError } = await supabase
+      .from('customers')
+      .update({ points: 0, total_collected: customer.total_collected + 1 })
+      .eq('phone_number', phone_number)
+      .select()
+      .single();
+    
+    if (updateError) throw updateError;
 
-    const updated = await db.get('SELECT * FROM customers WHERE phone_number = ?', phone_number);
+    const { error: historyError } = await supabase
+      .from('point_history')
+      .insert({ phone_number, points_added: -10, redeemed: true });
+    
+    if (historyError) throw historyError;
 
     res.json({
       message: 'Free drink redeemed manually!',
@@ -428,19 +442,10 @@ app.post('/api/admin/redeem', async (req, res) => {
   }
 });
 
-// Initialize database and start server
-async function startServer() {
-  await initDb();
-  
-  app.listen(PORT, () => {
-    console.log(`🚀 YANGCHAM Loyalty Server running on port ${PORT}`);
-    console.log(`📱 QR Code URL: http://localhost:${PORT}/api/qr-code`);
-  });
-}
-
-startServer().catch(err => {
-  console.error('Failed to start server:', err);
-  process.exit(1);
+// Start server
+app.listen(PORT, () => {
+  console.log(`🚀 YANGCHAM Loyalty Server running on port ${PORT}`);
+  console.log(`📱 QR Code URL: http://localhost:${PORT}/api/qr-code`);
 });
 
 export default app;
