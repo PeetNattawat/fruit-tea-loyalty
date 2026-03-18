@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # 🍹 YANGCHAM - ชาอย่างฉ่ำ | Loyalty Program
 
 A full-stack web application for YANGCHAM fruit tea shop loyalty program. Customers collect points when buying drinks and earn free drinks after collecting 10 points.
@@ -243,3 +244,7 @@ For issues or questions, please check:
 2. Backend is running and accessible
 3. SQLite database is writable
 4. Ports are not blocked by firewall
+=======
+# fruit-tea-loyalty
+V1.0.0
+>>>>>>> 94129eabdf7bf6604e4938a9a6efad5006b9d17d
