@@ -27,7 +27,12 @@ const bot = process.env.TELEGRAM_BOT_TOKEN
   : null;
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: ['https://heartfelt-gecko-05f286.netlify.app', 'http://localhost:5173', 'http://localhost:5174'],
+  credentials: true,
+  methods: ['GET', 'POST', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 app.use(express.json());
 
 // In-memory rate limiting for anti-abuse
