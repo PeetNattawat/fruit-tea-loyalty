@@ -3,9 +3,16 @@
   command = "npm install && npm run build:frontend"
 
 [[redirects]]
+  from = "/admin"
+  to = "/index.html"
+  status = 200
+  force = true
+
+[[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200
+  force = true
 
 [build.environment]
   VITE_API_URL = "https://fruit-tea-loyalty-backend.onrender.com/api"
