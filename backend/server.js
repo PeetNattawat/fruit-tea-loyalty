@@ -28,7 +28,7 @@ const bot = process.env.TELEGRAM_BOT_TOKEN
 
 // Middleware
 app.use(cors({
-  origin: ['https://heartfelt-gecko-05f286.netlify.app', 'http://localhost:5173', 'http://localhost:5174'],
+  origin: ['https://yangchamloyalty.netlify.app', 'https://magnificent-gecko-906e38.netlify.app', 'https://heartfelt-gecko-05f286.netlify.app', 'http://localhost:5173', 'http://localhost:5174'],
   credentials: true,
   methods: ['GET', 'POST', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
@@ -123,7 +123,7 @@ app.get('/api/health', (req, res) => {
 // Generate QR Code
 app.get('/api/qr-code', async (req, res) => {
   try {
-    const baseUrl = process.env.FRONTEND_URL || 'https://magnificent-gecko-906e38.netlify.app';
+    const baseUrl = process.env.FRONTEND_URL || 'https://yangchamloyalty.netlify.app/';
     const loyaltyUrl = `${baseUrl}`;
     
     const qrCodeDataUrl = await QRCode.toDataURL(loyaltyUrl, {
