@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react'
 import axios from 'axios'
 import { Phone, Star, Gift, CheckCircle, AlertCircle, Loader2, Droplets } from 'lucide-react'
+import { useLanguage } from '../contexts/LanguageContext'
+import { LanguageToggle } from './LanguageToggle'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api'
 
@@ -20,6 +22,7 @@ const getSessionToken = () => {
 }
 
 export default function CustomerPage() {
+  const { t } = useLanguage()
   const [phone, setPhone] = useState('')
   const [customer, setCustomer] = useState(null)
   const [loading, setLoading] = useState(false)
@@ -43,7 +46,7 @@ export default function CustomerPage() {
   // Go to collect step
   const handleContinue = async () => {
     if (!phone || phone.length < 10) {
-      setError('กรุณากรอกเบอร์โทรศัพท์ให้ถูกต้อง (อย่างน้อย 10 ตัว)')
+      setError(t('invalidPhone'))
       return
     }
     
@@ -81,7 +84,7 @@ export default function CustomerPage() {
   // Collect point
   const collectPoint = async () => {
     if (!phone || phone.length < 10) {
-      setError('กรุณากรอกเบอร์โทรศัพท์ให้ถูกต้อง (10 ตัว)')
+      setError(t('invalidPhone'))
       return
     }
 
@@ -113,7 +116,7 @@ export default function CustomerPage() {
         // Show redeem options immediately when at 10 points
         setShowRedeemOptions(true)
       } else {
-        setError(err.response?.data?.error || 'เกิดข้อผิดพลาด กรุณาลองใหม่')
+        setError(err.response?.data?.error || t('pleaseTryAgain'))
       }
     } finally {
       setLoading(false)
@@ -237,14 +240,19 @@ export default function CustomerPage() {
 
       {/* Content */}
       <div className="w-full max-w-md relative z-10">
+        {/* Language Toggle */}
+        <div className="absolute top-0 right-0 z-20">
+          <LanguageToggle />
+        </div>
+
         {/* Logo Header */}
         <div className="text-center mb-6">
           <div className="inline-flex items-center justify-center w-24 h-24 bg-gradient-to-br from-fruit-orange to-lemon-yellow rounded-full mb-4 shadow-2xl animate-bounce">
             <Droplets className="w-12 h-12 text-deep-red" />
           </div>
           <h1 className="font-display text-4xl font-bold text-cream mb-1">YANGCHAM</h1>
-          <p className="text-cream/80 text-lg font-display">ชาอย่างฉ่ำ</p>
-          <p className="text-cream/60 text-sm mt-2">สะสมแต้ม แลกฟรี!</p>
+          <p className="text-cream/80 text-lg font-display">{t('brandSubtitle')}</p>
+          <p className="text-cream/60 text-sm mt-2">{t('tagline')}</p>
         </div>
 
         {/* Main Card */}
@@ -257,7 +265,7 @@ export default function CustomerPage() {
                 <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-fruit-orange/20 to-lemon-yellow/20 rounded-full mb-4">
                   <Phone className="w-10 h-10 text-fruit-orange" />
                 </div>
-                <h2 className="text-2xl font-bold text-tea-brown font-display mb-2">ยินดีต้อนรับ!</h2>
+                <h2 className="text-2xl font-bold text-tea-brown font-display mb-2">{t('enterPhone')}</h2>
                 <p className="text-tea-brown/60">กรอกเบอร์โทรศัพท์เพื่อสะสมแต้ม</p>
               </div>
 
@@ -267,7 +275,7 @@ export default function CustomerPage() {
                   type="tel"
                   value={phone}
                   onChange={handlePhoneChange}
-                  placeholder="กรอกเบอร์โทรศัพท์"
+                  placeholder={t('phonePlaceholder')}
                   maxLength={10}
                   className="w-full px-4 py-4 text-lg border-2 border-fruit-orange/30 rounded-2xl focus:border-fruit-orange focus:outline-none transition-all bg-cream/50 text-tea-brown placeholder-tea-brown/40 font-display text-center"
                   disabled={loading}
@@ -285,7 +293,7 @@ export default function CustomerPage() {
                   <Loader2 className="w-6 h-6 animate-spin mx-auto" />
                 ) : (
                   <>
-                    ถัดไป <span className="ml-2">→</span>
+                    {t('next')} <span className="ml-2">→</span>
                   </>
                 )}
               </button>
@@ -314,14 +322,14 @@ export default function CustomerPage() {
                   onClick={handleLogout}
                   className="flex items-center gap-1 px-3 py-1.5 bg-cream-dark hover:bg-red-100 text-tea-brown/70 hover:text-red-600 rounded-xl transition-all text-sm font-display"
                 >
-                  <span>ออกจากระบบ</span>
+                  <span>{t('logout')}</span>
                   <span>→</span>
                 </button>
               </div>
 
               {/* Points Title */}
               <div className="text-center mb-4">
-                <p className="text-tea-brown/60 text-sm mb-1">Your Points</p>
+                <p className="text-tea-brown/60 text-sm mb-1">{t('yourPoints')}</p>
                 <div className="flex items-center justify-center gap-1">
                   <span className="text-5xl font-bold text-fruit-orange font-display">
                     {customer?.points || 0}
@@ -358,7 +366,7 @@ export default function CustomerPage() {
               {/* Free drinks count */}
               <div className="text-center mb-6">
                 <p className="text-tea-brown/70 text-sm">
-                  🎉 Total free drinks earned: <span className="font-bold text-fruit-orange text-lg">{customer?.total_collected || 0}</span>
+                  🎉 {t('totalFreeDrinks')}: <span className="font-bold text-fruit-orange text-lg">{customer?.total_collected || 0}</span>
                 </p>
               </div>
 
@@ -371,7 +379,7 @@ export default function CustomerPage() {
                     </div>
                   </div>
                   <p className="text-center font-bold text-tea-brown mb-2 text-xl font-display">
-                    🎉 ครบ 10 แต้มแล้ว!
+                    🎉 {t('freeDrinkEarned')}
                   </p>
                   <p className="text-center text-tea-brown/70 mb-5 text-sm">
                     ต้องการแลกเครื่องดื่มฟรีตอนนี้หรือไม่?
@@ -382,14 +390,14 @@ export default function CustomerPage() {
                       disabled={loading}
                       className="py-3 px-4 bg-fruit-orange hover:bg-fruit-orange-light text-white font-bold rounded-2xl btn-press transition-all disabled:opacity-50 font-display"
                     >
-                      {loading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : 'แลกเลย'}
+                      {loading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" /> : t('redeemNow')}
                     </button>
                     <button
                       onClick={saveForLater}
                       disabled={loading}
                       className="py-3 px-4 bg-cream-dark hover:bg-cream text-tea-brown font-bold rounded-2xl btn-press transition-all disabled:opacity-50 font-display"
                     >
-                      ยังไม่ใช้
+                      {t('saveForLater')}
                     </button>
                   </div>
                   <p className="text-center text-tea-brown/50 text-xs mt-3">
@@ -408,11 +416,11 @@ export default function CustomerPage() {
                   {loading ? (
                     <Loader2 className="w-6 h-6 animate-spin mx-auto" />
                   ) : customer?.can_redeem ? (
-                    'ได้รับเครื่องดื่มฟรีแล้ว!'
+                    t('freeDrinkEarned')
                   ) : (
                     <>
                       <Star className="inline w-5 h-5 mr-2" />
-                      สะสมแต้ม
+                      {t('collectPoints')}
                     </>
                   )}
                 </button>
@@ -449,8 +457,8 @@ export default function CustomerPage() {
                 <div className="inline-flex items-center justify-center w-20 h-20 bg-gradient-to-br from-fruit-orange to-lemon-yellow rounded-full mb-4">
                   <CheckCircle className="w-10 h-10 text-white" />
                 </div>
-                <h2 className="text-2xl font-bold text-tea-brown font-display mb-2">ขอบคุณค่ะ! 🎉</h2>
-                <p className="text-tea-brown/70 text-lg">สะสมแต้มสำเร็จ</p>
+                <h2 className="text-2xl font-bold text-tea-brown font-display mb-2">{t('thankYou')} 🎉</h2>
+                <p className="text-tea-brown/70 text-lg">{t('pointCollected')}</p>
               </div>
               
               <div className="bg-gradient-to-r from-fruit-orange/10 to-lemon-yellow/10 rounded-2xl p-4 mb-6">

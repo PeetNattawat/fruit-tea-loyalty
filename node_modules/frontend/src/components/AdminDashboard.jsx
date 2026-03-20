@@ -15,7 +15,11 @@ import {
   AlertCircle,
   TrendingUp,
   Droplets,
-  QrCode
+  QrCode,
+  RefreshCw,
+  Plus,
+  Trash2,
+  Database
 } from 'lucide-react'
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api'
@@ -39,6 +43,14 @@ export default function AdminDashboard() {
   
   // QR Code state
   const [qrCode, setQrCode] = useState('')
+
+  // Add customer modal state
+  const [showAddModal, setShowAddModal] = useState(false)
+  const [newCustomerPhone, setNewCustomerPhone] = useState('')
+  const [newCustomerPoints, setNewCustomerPoints] = useState(0)
+
+  // Database storage state
+  const [storageInfo, setStorageInfo] = useState(null)
 
   // Check if already logged in
   useEffect(() => {
@@ -107,12 +119,78 @@ export default function AdminDashboard() {
     }
   }
 
+  // Fetch database storage info
+  const fetchStorageInfo = async () => {
+    try {
+      const response = await axios.get(`${API_URL}/admin/storage`)
+      setStorageInfo(response.data)
+    } catch (err) {
+      console.error('Failed to fetch storage info:', err)
+    }
+  }
+
+  // Add new customer
+  const addCustomer = async () => {
+    if (!newCustomerPhone || newCustomerPhone.length < 10) {
+      alert('กรุณากรอกเบอร์โทรศัพท์ให้ถูกต้อง (10 ตัว)')
+      return
+    }
+    
+    setLoading(true)
+    try {
+      await axios.post(`${API_URL}/admin/customers`, {
+        phone_number: newCustomerPhone,
+        points: parseInt(newCustomerPoints) || 0
+      })
+      setShowAddModal(false)
+      setNewCustomerPhone('')
+      setNewCustomerPoints(0)
+      fetchCustomers()
+      fetchHistory()
+    } catch (err) {
+      alert(err.response?.data?.error || 'Failed to add customer')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Delete customer
+  const deleteCustomer = async (phone) => {
+    if (!confirm(`ต้องการลบลูกค้า ${phone} ใช่หรือไม่?`)) {
+      return
+    }
+    
+    setLoading(true)
+    try {
+      await axios.delete(`${API_URL}/admin/customers/${phone}`)
+      fetchCustomers()
+      fetchHistory()
+    } catch (err) {
+      alert(err.response?.data?.error || 'Failed to delete customer')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  // Refresh all data
+  const refreshData = async () => {
+    setLoading(true)
+    await Promise.all([
+      fetchCustomers(),
+      fetchHistory(),
+      fetchQrCode(),
+      fetchStorageInfo()
+    ])
+    setLoading(false)
+  }
+
   // Load data when logged in
   useEffect(() => {
     if (isLoggedIn) {
       fetchCustomers()
       fetchHistory()
       fetchQrCode()
+      fetchStorageInfo()
     }
   }, [isLoggedIn])
 
@@ -232,6 +310,14 @@ export default function AdminDashboard() {
               </div>
             </div>
             <button
+              onClick={refreshData}
+              disabled={loading}
+              className="flex items-center px-4 py-2 mr-2 text-tea-brown hover:text-fruit-orange transition-colors font-display disabled:opacity-50"
+            >
+              <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+              รีเฟรช
+            </button>
+            <button
               onClick={handleLogout}
               className="flex items-center px-4 py-2 text-tea-brown hover:text-fruit-orange transition-colors font-display"
             >
@@ -280,21 +366,59 @@ export default function AdminDashboard() {
           </button>
         </div>
 
+        {/* Database Storage Monitor */}
+        {storageInfo && (
+          <div className="mb-6">
+            <div className={`glass rounded-2xl p-4 shadow-lg ${storageInfo.usage_percent > 80 ? 'border-2 border-red-500' : storageInfo.usage_percent > 60 ? 'border-2 border-yellow-500' : ''}`}>
+              <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center">
+                  <Database className="w-5 h-5 mr-2 text-tea-brown" />
+                  <span className="font-display font-medium text-tea-brown">พื้นที่ฐานข้อมูล</span>
+                  {storageInfo.usage_percent > 80 && (
+                    <span className="ml-2 px-2 py-1 bg-red-100 text-red-600 text-xs rounded-full font-display">ใกล้เต็ม!</span>
+                  )}
+                </div>
+                <span className="font-display text-sm text-tea-brown/70">
+                  {storageInfo.used_mb} MB / {storageInfo.total_mb} MB
+                </span>
+              </div>
+              <div className="w-full bg-cream-dark/50 rounded-full h-3">
+                <div 
+                  className={`h-3 rounded-full transition-all ${storageInfo.usage_percent > 80 ? 'bg-red-500' : storageInfo.usage_percent > 60 ? 'bg-yellow-500' : 'bg-green-500'}`}
+                  style={{ width: `${storageInfo.usage_percent}%` }}
+                />
+              </div>
+              <p className="mt-2 text-xs text-tea-brown/60 font-display">
+                {storageInfo.customers_count} ลูกค้า | {storageInfo.history_count} รายการประวัติ
+              </p>
+            </div>
+          </div>
+        )}
+
         {/* Customers Tab */}
         {activeTab === 'customers' && (
           <div className="glass rounded-3xl shadow-lg overflow-hidden">
             <div className="p-6 border-b border-fruit-orange/20">
               <div className="flex items-center justify-between">
                 <h2 className="text-xl font-bold text-tea-brown font-display">รายชื่อลูกค้า</h2>
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-tea-brown/40 w-4 h-4" />
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder="ค้นหาเบอร์โทร..."
-                    className="pl-10 pr-4 py-2 border border-fruit-orange/30 rounded-2xl focus:border-fruit-orange focus:outline-none bg-cream/50 text-tea-brown font-display"
-                  />
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => setShowAddModal(true)}
+                    className="flex items-center px-4 py-2 bg-fruit-orange text-white rounded-2xl hover:bg-fruit-orange-light transition-all font-display"
+                  >
+                    <Plus className="w-4 h-4 mr-2" />
+                    เพิ่มลูกค้า
+                  </button>
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-tea-brown/40 w-4 h-4" />
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="ค้นหาเบอร์โทร..."
+                      className="pl-10 pr-4 py-2 border border-fruit-orange/30 rounded-2xl focus:border-fruit-orange focus:outline-none bg-cream/50 text-tea-brown font-display"
+                    />
+                  </div>
                 </div>
               </div>
             </div>
@@ -388,6 +512,13 @@ export default function AdminDashboard() {
                                   title="แก้ไข"
                                 >
                                   <Edit2 className="w-4 h-4" />
+                                </button>
+                                <button
+                                  onClick={() => deleteCustomer(customer.phone_number)}
+                                  className="p-1 text-red-600 hover:bg-red-50 rounded-xl"
+                                  title="ลบ"
+                                >
+                                  <Trash2 className="w-4 h-4" />
                                 </button>
                                 {customer.points >= 10 && (
                                   <button
@@ -532,6 +663,54 @@ export default function AdminDashboard() {
                 <li>• ติดไว้ที่เคาน์เตอร์ร้าน</li>
                 <li>• ลูกค้าสแกนแล้วกรอกเบอร์โทรเพื่อสะสมแต้ม</li>
               </ul>
+            </div>
+          </div>
+        )}
+
+        {/* Add Customer Modal */}
+        {showAddModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+            <div className="glass rounded-3xl p-8 shadow-2xl max-w-md w-full mx-4">
+              <h2 className="text-2xl font-bold text-tea-brown font-display mb-6">เพิ่มลูกค้าใหม่</h2>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-tea-brown/70 mb-2 font-display">เบอร์โทรศัพท์</label>
+                  <input
+                    type="tel"
+                    value={newCustomerPhone}
+                    onChange={(e) => setNewCustomerPhone(e.target.value)}
+                    placeholder="กรอกเบอร์ 10 ตัว"
+                    maxLength={10}
+                    className="w-full px-4 py-3 border border-fruit-orange/30 rounded-2xl focus:border-fruit-orange focus:outline-none bg-cream/50 text-tea-brown font-display"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-tea-brown/70 mb-2 font-display">แต้มเริ่มต้น</label>
+                  <input
+                    type="number"
+                    value={newCustomerPoints}
+                    onChange={(e) => setNewCustomerPoints(e.target.value)}
+                    min="0"
+                    max="10"
+                    className="w-full px-4 py-3 border border-fruit-orange/30 rounded-2xl focus:border-fruit-orange focus:outline-none bg-cream/50 text-tea-brown font-display"
+                  />
+                </div>
+              </div>
+              <div className="flex gap-3 mt-6">
+                <button
+                  onClick={() => setShowAddModal(false)}
+                  className="flex-1 py-3 border border-fruit-orange/30 text-tea-brown rounded-2xl hover:bg-cream-dark transition-all font-display"
+                >
+                  ยกเลิก
+                </button>
+                <button
+                  onClick={addCustomer}
+                  disabled={loading}
+                  className="flex-1 py-3 bg-fruit-orange text-white rounded-2xl hover:bg-fruit-orange-light transition-all font-display disabled:opacity-50"
+                >
+                  {loading ? 'กำลังเพิ่ม...' : 'เพิ่มลูกค้า'}
+                </button>
+              </div>
             </div>
           </div>
         )}

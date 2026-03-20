@@ -28,7 +28,7 @@ const bot = process.env.TELEGRAM_BOT_TOKEN
 
 // Middleware
 app.use(cors({
-  origin: ['https://chayangchamloyalty.netlify.app', 'https://yangchamloyalty.netlify.app', 'https://magnificent-gecko-906e38.netlify.app', 'https://heartfelt-gecko-05f286.netlify.app', 'http://localhost:5173', 'http://localhost:5174'],
+  origin: ['https://chayangchamloyalty.netlify.app', 'https://magnificent-gecko-906e38.netlify.app', 'https://heartfelt-gecko-05f286.netlify.app', 'http://localhost:5173', 'http://localhost:5174'],
   credentials: true,
   methods: ['GET', 'POST', 'PATCH', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
@@ -444,6 +444,100 @@ app.post('/api/admin/redeem', async (req, res) => {
   } catch (error) {
     console.error('Manual redeem error:', error);
     res.status(500).json({ error: 'Failed to redeem', details: error.message });
+  }
+});
+
+// Get database storage info
+app.get('/api/admin/storage', async (req, res) => {
+  try {
+    // Get customer count
+    const { count: customerCount, error: customerError } = await supabase
+      .from('customers')
+      .select('*', { count: 'exact', head: true });
+    
+    // Get history count  
+    const { count: historyCount, error: historyError } = await supabase
+      .from('point_history')
+      .select('*', { count: 'exact', head: true });
+
+    // Estimate storage (Supabase free tier = 500MB)
+    // Rough estimate: ~1KB per customer, ~500 bytes per history entry
+    const estimatedBytes = (customerCount * 1024) + (historyCount * 512);
+    const totalBytes = 500 * 1024 * 1024; // 500MB
+    const usagePercent = Math.round((estimatedBytes / totalBytes) * 100);
+    
+    res.json({
+      used_mb: Math.round(estimatedBytes / 1024 / 1024),
+      total_mb: 500,
+      usage_percent: Math.min(usagePercent, 100),
+      customers_count: customerCount || 0,
+      history_count: historyCount || 0
+    });
+  } catch (error) {
+    console.error('Storage info error:', error);
+    res.status(500).json({ error: 'Failed to get storage info' });
+  }
+});
+
+// Add new customer
+app.post('/api/admin/customers', async (req, res) => {
+  const { phone_number, points = 0 } = req.body;
+  
+  try {
+    // Check if customer exists
+    const { data: existing } = await supabase
+      .from('customers')
+      .select('id')
+      .eq('phone_number', phone_number)
+      .single();
+    
+    if (existing) {
+      return res.status(400).json({ error: 'Customer already exists' });
+    }
+    
+    // Insert new customer
+    const { data, error } = await supabase
+      .from('customers')
+      .insert([{ 
+        phone_number, 
+        points: Math.min(parseInt(points) || 0, 10),
+        total_collected: 0 
+      }])
+      .select()
+      .single();
+    
+    if (error) throw error;
+    
+    res.json({ message: 'Customer added successfully', customer: data });
+  } catch (error) {
+    console.error('Add customer error:', error);
+    res.status(500).json({ error: 'Failed to add customer' });
+  }
+});
+
+// Delete customer
+app.delete('/api/admin/customers/:phone', async (req, res) => {
+  const { phone } = req.params;
+  
+  try {
+    // Delete customer history first
+    await supabase
+      .from('point_history')
+      .delete()
+      .eq('phone_number', phone);
+    
+    // Delete customer
+    const { error } = await supabase
+      .from('customers')
+      .delete()
+      .eq('phone_number', phone);
+    
+    if (error) throw error;
+    
+    res.json({ message: 'Customer deleted successfully' });
+  } catch (error) {
+    console.error('Delete customer error:', error);
+    res.status(500).json({ error: 'Failed to delete customer' });
   }
 });
 
