@@ -30,7 +30,7 @@ const bot = process.env.TELEGRAM_BOT_TOKEN
 app.use(cors({
   origin: ['https://chayangchamloyalty.netlify.app', 'https://magnificent-gecko-906e38.netlify.app', 'https://heartfelt-gecko-05f286.netlify.app', 'http://localhost:5173', 'http://localhost:5174'],
   credentials: true,
-  methods: ['GET', 'POST', 'PATCH', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
 app.use(express.json());

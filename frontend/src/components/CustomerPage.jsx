@@ -4,7 +4,7 @@ import { Phone, Star, Gift, CheckCircle, AlertCircle, Loader2, Droplets } from '
 import { useLanguage } from '../contexts/LanguageContext'
 import { LanguageToggle } from './LanguageToggle'
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api'
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3004/api'
 
 // Generate unique token for anti-refresh abuse
 const generateToken = () => {
